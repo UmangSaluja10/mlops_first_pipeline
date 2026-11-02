@@ -1,13 +1,29 @@
-#Main File
 from pathlib import Path
 import joblib
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
+import mlflow
+import mlflow.sklearn
+import os
 
 app = FastAPI(title="Iris Model API")
 
-model_path = Path("models/iris_model.joblib")
-model = joblib.load(model_path)
+#MLFLOW Configuration
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:6001")
+MODEL_URI = "models:/iris-classifier@champion"
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+# model_path = Path("models/iris_model.joblib")
+# model = joblib.load(model_path)'
+
+try:
+    model = mlflow.sklearn.load_model(MODEL_URI)
+    client = mlflow.MlflowClient()
+    champion_model = client.get_model_version_by_alias(
+        name="iris-classifier", alias="champion"
+    )
+    print("Loaded champion model from MLflow:", champion_model)
+except Exception as e:
+    raise RuntimeError(f"Failed to load model from MLflow: {e}")
 
 class IrisRequest(BaseModel):
     sepal_length: float = Field(gt=0)
@@ -19,10 +35,12 @@ class IrisRequest(BaseModel):
 def health_check():
     return {"message": "API is ready to serve..."}
 
-
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy",
+            "model_name": "iris-classifier",
+            "model_version": champion_model.version}
+
 
 @app.post("/predict")
 def predict(data: IrisRequest):
@@ -32,7 +50,9 @@ def predict(data: IrisRequest):
         data.petal_length,
         data.petal_width
     ]]
+
     prediction = int(model.predict(features)[0])
+
     return {
         "prediction": prediction,
         "class_name": ["setosa", "versicolor", "virginica"][prediction]
