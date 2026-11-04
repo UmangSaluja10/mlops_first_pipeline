@@ -1,15 +1,11 @@
 import os
+from contextlib import asynccontextmanager
+from typing import Callable
 
-from flask import app
 import mlflow
 import mlflow.sklearn
 from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
-from contextlib import asynccontextmanager
-from typing import Callable
-import requests
-
-# app = FastAPI(title="Iris Model API")
 
 # MLflow configuration
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:6001")
@@ -27,35 +23,38 @@ class IrisRequest(BaseModel):
     petal_length: float = Field(gt=0)
     petal_width: float = Field(gt=0)
 
+
 # Application factory
 def create_app(model_loader: Callable = load_mlflow_model, version_loader: Callable = None):
-    #lifespan function executes when the application starts up...
     if version_loader is None:
         def version_loader():
             client = mlflow.MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
-            champion = client.get_model_version_by_alias(name="iris-classifier", alias="champion")
+            champion = client.get_model_version_by_alias(
+                name="iris-classifier", alias="champion"
+            )
             return champion.version
+
+    # lifespan runs when the application starts up
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """
-        Load the model once during startup
-        Injected loader can be real MLFLOW or a test model
+        Load the model once during startup.
+        The injected loader can be the real MLflow one or a test model.
         """
         try:
             app.state.model = model_loader()
         except Exception as e:
             raise RuntimeError(f"Failed to load model from MLflow: {e}")
 
-        client = mlflow.MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
-        champion_model = client.get_model_version_by_alias(name="iris-classifier", alias="champion")
         app.state.model_version = version_loader()
         print("Loaded champion model from MLflow:", app.state.model_version)
         yield
+
     app = FastAPI(
         title="Iris Model API",
         description="API for serving the Iris classification model",
-        version = "3.0.0",
-        lifespan=lifespan
+        version="3.0.0",
+        lifespan=lifespan,
     )
 
     @app.get("/")
@@ -88,4 +87,6 @@ def create_app(model_loader: Callable = load_mlflow_model, version_loader: Calla
         }
 
     return app
+
+
 app = create_app()
