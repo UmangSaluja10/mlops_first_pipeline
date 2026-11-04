@@ -22,7 +22,7 @@ def client():
     with TestClient(app) as test_client:
         yield test_client
 
-def test_health_endpoint():
+def test_health_endpoint(client):
     """Verify the app is running and responds to a health check."""
     response = client.get("/health")
     assert response.status_code == 200
@@ -30,7 +30,7 @@ def test_health_endpoint():
     assert response.json()["model_version"] == "test-version"
 
 
-def test_valid_iris_prediction():
+def test_valid_iris_prediction(client):
     """Verify that we get a valid prediction."""
     payload = {
         "sepal_length": 3.4,
